@@ -1,0 +1,33 @@
+name: Buff Social Media
+name: Buff Social Media
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # Chạy mỗi 6 giờ
+  workflow_dispatch:        # Cho phép chạy thủ công
+
+jobs:
+  buff:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: pip install selenium requests fake-useragent
+      
+      - name: Install Chrome and ChromeDriver
+        run: |
+          sudo apt update
+          sudo apt install -y chromium-browser chromium-chromedriver
+      
+      - name: Run buff script
+        run: python buff.py facebook https://facebook.com/yourpost
+        env:
+          # Thêm secret (cookie, token) nếu cần
+          PASS: ${{ secrets.MY_PASSWORD }}
