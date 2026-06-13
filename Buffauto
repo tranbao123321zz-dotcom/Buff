@@ -1,0 +1,257 @@
+#!/usr/bin/env python3
+#!/usr/bin/env python3
+"""
+Tool Buff Like/Follow cho các nền tảng xã hội
+Hỗ trợ: Facebook, Instagram, TikTok, Twitter (X)
+Sử dụng Selenium + proxy pool + user agents ngẫu nhiên
+"""
+
+import random
+import time
+import requests
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.options import Options
+from fake_useragent import UserAgent
+
+# ================= CẤU HÌNH =================
+class Config:
+    # Proxy list (định dạng ip:port hoặc user:pass@ip:port)
+    PROXY_LIST = [
+        "http://proxy1.example.com:8080",
+        "http://proxy2.example.com:3128",
+        # Thêm proxy thật ở đây
+    ]
+    
+    # Số lượng buff
+    BUFF_AMOUNT = 100
+    
+    # Delay giữa các hành động (giây)
+    DELAY_MIN = 5
+    DELAY_MAX = 15
+    
+    # Tài khoản dùng để buff (list account cookie)
+    ACCOUNTS_FILE = "accounts.txt"
+    
+    # URL mục tiêu
+    TARGET_URLS = {
+        "facebook": "https://facebook.com/your_page_or_post",
+        "instagram": "https://instagram.com/p/your_post_id",
+        "tiktok": "https://tiktok.com/@username/video/123",
+        "twitter": "https://twitter.com/username/status/123"
+    }
+
+# ================= HÀM CHÍNH =================
+class SocialBuffBot:
+    def __init__(self, platform, target_url):
+        self.platform = platform
+        self.target_url = target_url
+        self.driver = self._init_driver()
+        self.ua = UserAgent()
+        
+    def _init_driver(self):
+        """Khởi tạo Chrome driver với proxy và user agent ngẫu nhiên"""
+        chrome_options = Options()
+        chrome_options.add_argument(f'--user-agent={self.ua.random}')
+        chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        chrome_options.add_experimental_option('useAutomationExtension', False)
+        
+        # Thêm proxy nếu có
+        if Config.PROXY_LIST:
+            proxy = random.choice(Config.PROXY_LIST)
+            chrome_options.add_argument(f'--proxy-server={proxy}')
+        
+        # Chạy headless (không hiện browser) để nhanh hơn
+        # chrome_options.add_argument('--headless')
+        
+        driver = webdriver.Chrome(options=chrome_options)
+        driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+        return driver
+    
+    def _random_delay(self):
+        """Delay ngẫu nhiên để tránh bị phát hiện"""
+        time.sleep(random.uniform(Config.DELAY_MIN, Config.DELAY_MAX))
+    
+    def _login_with_cookie(self, cookie_file):
+        """Đăng nhập bằng cookie đã lưu"""
+        self.driver.get("https://www." + self.platform + ".com")
+        self._random_delay()
+        
+        with open(cookie_file, 'r') as f:
+            cookies = json.load(f)
+        for cookie in cookies:
+            self.driver.add_cookie(cookie)
+        self.driver.refresh()
+        self._random_delay()
+    
+    def buff_facebook(self):
+        """Buff like cho Facebook (post hoặc page)"""
+        try:
+            self.driver.get(self.target_url)
+            self._random_delay()
+            
+            # Tìm nút like
+            like_buttons = self.driver.find_elements(By.XPATH, "//div[@aria-label='Thích']")
+            if not like_buttons:
+                like_buttons = self.driver.find_elements(By.XPATH, "//span[contains(text(), 'Like')]")
+            
+            if like_buttons:
+                like_buttons[0].click()
+                print(f"[+] Liked Facebook: {self.target_url}")
+                return True
+            return False
+        except Exception as e:
+            print(f"[-] Facebook error: {e}")
+            return False
+    
+    def buff_instagram(self):
+        """Buff like/ follow cho Instagram"""
+        try:
+            self.driver.get(self.target_url)
+            self._random_delay()
+            
+            # Đợi nút like xuất hiện
+            wait = WebDriverWait(self.driver, 10)
+            like_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//span[@aria-label='Thích']")))
+            like_btn.click()
+            print(f"[+] Liked Instagram: {self.target_url}")
+            
+            # Nếu cần follow
+            follow_btn = self.driver.find_elements(By.XPATH, "//button[contains(text(), 'Follow')]")
+            if follow_btn:
+                follow_btn[0].click()
+                print(f"[+] Followed: {self.target_url}")
+            
+            return True
+        except Exception as e:
+            print(f"[-] Instagram error: {e}")
+            return False
+    
+    def buff_tiktok(self):
+        """Buff like/ follow cho TikTok"""
+        try:
+            self.driver.get(self.target_url)
+            self._random_delay()
+            
+            # TikTok dùng SVG hoặc div đặc biệt
+            script = """
+            var likeBtn = document.querySelector('[data-e2e="like-icon"]');
+            if(likeBtn) likeBtn.click();
+            return likeBtn != null;
+            """
+            result = self.driver.execute_script(script)
+            if result:
+                print(f"[+] Liked TikTok: {self.target_url}")
+            else:
+                # Fallback: click vào vùng like
+                self.driver.execute_script("document.querySelector('div[class*=\"LikeButton\"]').click();")
+            return True
+        except Exception as e:
+            print(f"[-] TikTok error: {e}")
+            return False
+    
+    def buff_twitter(self):
+        """Buff like/ retweet cho Twitter (X)"""
+        try:
+            self.driver.get(self.target_url)
+            self._random_delay()
+            
+            # Tìm nút like (heart icon)
+            like_btn = self.driver.find_elements(By.XPATH, "//div[@data-testid='like']")
+            if like_btn:
+                like_btn[0].click()
+                print(f"[+] Liked Twitter: {self.target_url}")
+                
+                # Tùy chọn retweet
+                rt_btn = self.driver.find_elements(By.XPATH, "//div[@data-testid='retweet']")
+                if rt_btn and random.choice([True, False]):
+                    rt_btn[0].click()
+                    self._random_delay()
+                    confirm = self.driver.find_element(By.XPATH, "//div[@data-testid='retweetConfirm']")
+                    confirm.click()
+                    print(f"[+] Retweeted: {self.target_url}")
+            return True
+        except Exception as e:
+            print(f"[-] Twitter error: {e}")
+            return False
+    
+    def run(self):
+        """Chạy buff theo platform"""
+        print(f"[+] Bắt đầu buff {self.platform} tại {self.target_url}")
+        
+        # Đọc danh sách tài khoản
+        try:
+            with open(Config.ACCOUNTS_FILE, 'r') as f:
+                accounts = [line.strip() for line in f if line.strip()]
+        except:
+            print("[-] Không tìm thấy file accounts.txt, chỉ dùng 1 session")
+            accounts = ['session1']
+        
+        count = 0
+        for acc in accounts[:Config.BUFF_AMOUNT]:
+            print(f"[*] Đang dùng tài khoản: {acc}")
+            try:
+                if self.platform == "facebook":
+                    self.buff_facebook()
+                elif self.platform == "instagram":
+                    self.buff_instagram()
+                elif self.platform == "tiktok":
+                    self.buff_tiktok()
+                elif self.platform == "twitter":
+                    self.buff_twitter()
+                count += 1
+                print(f"[+] Đã buff: {count}/{min(len(accounts), Config.BUFF_AMOUNT)}")
+                self._random_delay()
+            except Exception as e:
+                print(f"[-] Lỗi với acc {acc}: {e}")
+                continue
+        
+        self.driver.quit()
+        print(f"[+] Hoàn thành! Đã buff {count} lượt.")
+
+# ================= TẠO FILE ACCOUNTS MẪU =================
+def create_sample_accounts():
+    """Tạo file accounts.txt mẫu"""
+    sample = """cookies_facebook_user1.json
+cookies_instagram_user2.json
+cookies_tiktok_user3.json
+cookies_twitter_user4.json"""
+    
+    with open("accounts.txt", "w") as f:
+        f.write(sample)
+    print("[+] Đã tạo accounts.txt - mỗi dòng là 1 file cookie JSON")
+
+# ================= HÀM LẤY COOKIE TỪ TRÌNH DUYỆT =================
+def export_cookies_extension():
+    """
+    Hướng dẫn lấy cookie:
+    1. Cài extension "EditThisCookie" (Chrome) hoặc "Cookie-Editor" (Firefox)
+    2. Đăng nhập tài khoản mạng xã hội
+    3. Export cookie dạng JSON, lưu thành file riêng cho từng acc
+    4. Đặt các file cookie vào cùng thư mục với script
+    """
+    pass
+
+# ================= MAIN =================
+if __name__ == "__main__":
+    import sys
+    import json
+    
+    if len(sys.argv) < 2:
+        print("Usage: python buff.py <platform> [target_url]")
+        print("Platform: facebook, instagram, tiktok, twitter")
+        print("Example: python buff.py facebook https://facebook.com/yourpost")
+        sys.exit(1)
+    
+    platform = sys.argv[1].lower()
+    target = sys.argv[2] if len(sys.argv) > 2 else Config.TARGET_URLS.get(platform, "")
+    
+    if not target:
+        print("[-] Vui lòng cung cấp URL target hoặc sửa trong Config")
+        sys.exit(1)
+    
+    bot = SocialBuffBot(platform, target)
+    bot.run()
